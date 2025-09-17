@@ -1,0 +1,24 @@
+# Linux/Mac build artifacts
+build/
+*.o
+*.so
+*.a
+
+# Windows build artifacts
+*.exe
+*.dll
+*.lib
+
+# IDE / Editor
+.vscode/
+.idea/
+
+# Personal secrets
+*.pem
+*.key
+
+# Root-level zip archives
+/*.7z
+
+/CUDA Samples/
+/Vulkan Samples/
