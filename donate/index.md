@@ -6,7 +6,7 @@ If you'd like to help power GoCL’s development (hardware, backups, power costs
 ### 🔗 Liberapay
 [![Donate via Liberapay](https://liberapay.com/thee3rdplayer/widget.svg)](https://liberapay.com/thee3rdplayer/)
 
-You can also find my contact info or tip via crypto/mobile money on my Liberapay profile.
+Note on LiberaPay: LiberaPay is used here as a buffer platform—it provides a simple, established infrastructure to collect donations and link potential supporters until direct payment methods become available. It acts like an intermediary “holding area,” leveraging its approach to route contributions reliably.
 
 ---
 
@@ -15,7 +15,7 @@ You can also find my contact info or tip via crypto/mobile money on my Liberapay
 **Bitcoin (BTC):**  
 `bc1q50wuw3etcepn33fjcz9rzpk2exrl8rn32nvtcz`  
 
-![BTC QR Code](./donate/btc-qr.png)
+![BTC QR Code](./btc-qr.png)
 
 **Mobile Money (Zambia):**  
 - Zamtel: +260 956 124 147  

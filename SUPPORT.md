@@ -1,14 +1,15 @@
 # 💡 Support GoCL
 
-I’m based in Zambia, where Stripe and PayPal are not supported.  
-If you'd like to help power GoCL’s development (hardware, backups, power costs), see below:
+Thanks for your interest in supporting GoCL development!
+
+Based in Zambia, where platforms like Stripe and PayPal aren't fully supported, I've set up alternative methods to receive your generous contributions.
 
 ---
 
 ### 🔗 Liberapay
 [![Donate via Liberapay](https://liberapay.com/thee3rdplayer/widget.svg)](https://liberapay.com/thee3rdplayer/)
 
-You can also find my contact info or tip via crypto/mobile money on my Liberapay profile.
+Note on LiberaPay: LiberaPay serves as a buffer platform—it offers a straightforward infrastructure to collect donations and connect with potential supporters until direct payment methods become available. It functions as an intermediary “holding area,” leveraging its approach to route contributions reliably.
 
 ---
 
