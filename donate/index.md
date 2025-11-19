@@ -13,9 +13,9 @@ Note on LiberaPay: LiberaPay is used here as a buffer platform—it provides a s
 ### 💰 Direct Donations
 
 **Bitcoin (BTC):**  
-`bc1q50wuw3etcepn33fjcz9rzpk2exrl8rn32nvtcz`  
+`bc1qzpyzf4dmsct9eyucxdzpskv234tzm3qkv7st3m`  
 
-![BTC QR Code](./btc-qr.png)
+![BTC QR Code](./qrcode.png)
 
 **Mobile Money (Zambia):**  
 - Zamtel: +260 956 124 147  
