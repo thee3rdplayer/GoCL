@@ -1,7 +1,3 @@
-# GoCL
-
-GoCL is a game engine designed to harness the full potential of heterogeneous hardware setups.
-
 ## Key Features
 
 - **Heterogeneous Compute** – Balances workloads across multiple hardware types for maximum efficiency.  
