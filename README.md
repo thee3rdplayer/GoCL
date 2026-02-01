@@ -1,20 +1,20 @@
-# GoCL – Gestalt Open Computing Language
+# GoCL
 
-**Goal:** Heterogeneous Vulkan engine optimized across AMD, NVIDIA, and potentially Apple hardware using ASTC as the primary basis for optimization techniques.
+GoCL is a game engine designed to harness the full potential of heterogeneous hardware setups.
 
 ## Key Features
-- ASTC-based texture handling, with options for relaxed compression where appropriate.
-- Optimized structure-of-arrays layouts for coalesced memory access.
-- Multi-stream memory management with L2/shared cache tuning.
-- Thread/block/warp optimization: occupancy, coalescing, and shuffle instructions.
-- TMU and ROP-aware memory and texture sampling patterns.
-- Algorithm-level optimizations for minimal divergence and better load balancing.
+
+- **Heterogeneous Compute** – Balances workloads across multiple hardware types for maximum efficiency.  
+- **Console-Like Optimization** – Leverages specific GPU capabilities to deliver consistent, high-fidelity visuals.  
+- **ASTC Integration** – Uses Adaptive Scalable Texture Compression to maintain top-quality graphics with minimal memory usage.  
+- **FSR Injection** – Integrates FidelityFX Super Resolution to boost performance without compromising image quality.  
+- **Linux / Graphics Stack** – Built on the Mesa 3D Graphics Library and Vulkan API for low-level hardware control.  
 
 ## Support Development
-Help cover load shedding backups and hardware upgrades.
 
-See [`SUPPORT.md`](./SUPPORT.md) for how to contribute to GoCL.
+Help cover load shedding backups and hardware upgrades.  
+See [`SUPPORT.md`](./SUPPORT.md) for ways to contribute to GoCL.  
 
 ---
 
-*All code is © 2025 Stanford Mukwena.*
+*All code © 2025 Stanford Mukwena.*
