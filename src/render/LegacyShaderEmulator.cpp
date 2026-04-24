@@ -63,6 +63,7 @@ enum : uint16_t {
     Op_Capability = 17,
     Op_TypeInt    = 21,
     Op_TypeFloat  = 22,
+    Op_Constant   = 43,
     Op_FConvert   = 115,
     Op_Decorate   = 71,
 };
@@ -113,7 +114,20 @@ void LegacyShaderEmulator::StripFP16Ops(std::vector<uint32_t>& spv) {
     std::unordered_set<uint32_t> fp16ids;
     Walk(spv, [&](uint32_t off, uint16_t op, uint16_t wc) {
         if (op == Op_TypeFloat && wc >= 3 && spv[off + 2] == 16)
-            fp16ids.insert(spv[off + 1]);
+            fp16ids.insert(spv[off + 1]); 
+        else if (op == Op_Constant && wc >= 3 && fp16ids.count(spv[off + 1])) {
+            // spv[off+2] = fp16 bits in low 16 — unpack and repack as fp32
+            uint16_t h = static_cast<uint16_t>(spv[off + 2] & 0xFFFF);
+            // fp16 → fp32 bit expansion
+            uint32_t sign = (h >> 15) & 1;
+            uint32_t exp  = (h >> 10) & 0x1F;
+            uint32_t mant = h & 0x3FF;
+            uint32_t f32  = 0;
+            if (exp == 0)       f32 = (sign << 31) | (mant << 13);          // denorm/zero
+            else if (exp == 31) f32 = (sign << 31) | (0xFF << 23) | (mant << 13); // inf/nan
+            else                f32 = (sign << 31) | ((exp + 112) << 23) | (mant << 13);
+            spv[off + 2] = f32;
+        }
     });
     if (fp16ids.empty()) return;
 
@@ -199,6 +213,32 @@ void LegacyShaderEmulator::RemoveSERDirectives(std::vector<uint32_t>& spv) {
                 NopRange(spv, off, wc);
         }
     });
+}
+ 
+bool LegacyShaderEmulator::Validate(
+    const std::vector<uint32_t>& spv,
+    const DeviceCapabilities&    caps)
+{
+    bool ok = true;
+    Walk(spv, [&](uint32_t off, uint16_t op, uint16_t wc) {
+        if (op != Op_Capability || wc < 2) return;
+        switch (spv[off + 1]) {
+            case Cap_Float16:
+                if (!caps.fp16Native) ok = false; break;
+            case Cap_Int8:
+            case Cap_StorageBuffer8Bit:
+                if (!caps.int8Support) ok = false; break;
+            case Cap_16BitStorage_SB:
+            case Cap_16BitStorage_UNI:
+            case Cap_16BitStorage_PA:
+            case Cap_16BitStorage_IO:
+                if (!caps.shaderInt16) ok = false; break;
+            case Cap_ShaderInvocationReorderNV:
+                if (!(caps.vendorID == 0x10DE && caps.hasSER)) ok = false; break;
+            default: break;
+        }
+    });
+    return ok;
 }
 
 // ---------------------------------------------------------------------------

@@ -17,6 +17,11 @@ VkPipeline PipelineBuilder::CreateGraphicsPipeline(
     auto vertPatched = LegacyShaderEmulator::Process(src.vertexSPIRV,   opts);
     auto fragPatched = LegacyShaderEmulator::Process(src.fragmentSPIRV, opts);
 
+    if (!LegacyShaderEmulator::Validate(vertPatched, caps) ||
+        !LegacyShaderEmulator::Validate(fragPatched, caps)) {
+        return VK_NULL_HANDLE;
+    }
+
     const VkShaderModuleCreateInfo vertCI {
         VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO, nullptr, 0,
         vertPatched.size() * 4, vertPatched.data()

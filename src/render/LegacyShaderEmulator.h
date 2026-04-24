@@ -34,6 +34,10 @@ public:
         const std::vector<uint32_t>& spirv,
         const TransformOptions&      opts);
 
+    [[nodiscard]] static bool Validate(
+        const std::vector<uint32_t>& spirv,
+        const DeviceCapabilities&    caps);    
+
 private:
     static void StripFP16Ops(std::vector<uint32_t>& spirv);
     static void Strip16BitStorage(std::vector<uint32_t>& spirv);
