@@ -1,0 +1,12 @@
+GoCL - Gestalt Open Computing Language
+Copyright 2025 Stanford Mukwena
+
+This software is dual-licensed under the Apache License 2.0 and MIT License.
+You may use it under either license.
+
+This project references algorithmic approaches and hardware techniques described in the NVIDIA CUDA Samples, Vulkan SDK samples, AMD GPU samples, and Apple Metal/Vulkan sample projects.
+No proprietary code from NVIDIA, AMD, Apple, or Khronos Group is included or redistributed. All code in this repository is original unless otherwise stated.
+
+No warranty is provided. Use at your own risk.
+
+For more licensing details, see LICENSE-APACHE and LICENSE.

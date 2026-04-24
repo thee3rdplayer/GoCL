@@ -1,0 +1,39 @@
+name: GoCL GPU Tests
+
+on: [push, pull_request]
+
+jobs:
+  vulkan-cpu:
+    runs-on: ubuntu-22.04
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install Mesa Lavapipe + build tools
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y \
+            libvulkan1 mesa-vulkan-drivers vulkan-tools \
+            spirv-tools glslang-tools
+
+      - name: Verify Vulkan ICD
+        run: vulkaninfo --summary
+        env:
+          VK_ICD_FILENAMES: /usr/share/vulkan/icd.d/lvp_icd.x86_64.json
+
+      - name: Configure
+        run: |
+          cmake -B build \
+            -DGOCL_ENABLE_TESTS=ON \
+            -DGOCL_FORCE_SWIFTSHADER=ON \
+            -DCMAKE_BUILD_TYPE=RelWithDebInfo
+
+      - name: Build
+        run: cmake --build build -j$(nproc)
+
+      - name: Run all tests
+        run: ctest --test-dir build --output-on-failure
+        env:
+          VK_ICD_FILENAMES: /usr/share/vulkan/icd.d/lvp_icd.x86_64.json
