@@ -69,6 +69,11 @@ DeviceCapabilities CapabilityOracle::Query(VkPhysicalDevice physDev) {
 
     vkGetPhysicalDeviceFeatures2(physDev, &feat2);
 
+    caps.astcHdrHW = CheckExtension(physDev, "VK_EXT_texture_compression_astc_hdr");
+    if (caps.vendorID == 0x1002 || caps.vendorID == 0x8086 || caps.isSwiftShader)
+        caps.astcHdrHW = false;
+
+    caps.astcHdrHW   = CheckExtension(physDev, "VK_EXT_texture_compression_astc_hdr"); 
     caps.astcLdrHW   = feat2.features.textureCompressionASTC_LDR;
     caps.etc2Support = feat2.features.textureCompressionETC2; 
     caps.fp16Native  = fp16.shaderFloat16;

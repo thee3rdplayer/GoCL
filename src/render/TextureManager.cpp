@@ -7,10 +7,11 @@
 #include <stb_image.h>
 #include <astcenc.h>
 #include <basisu_transcoder.h>
-#include <basisu_comp.h>          // basis_compressor_params / basis_compressor
+#include <basisu_comp.h>
 #include <vulkan/vulkan.h>
 #include <stdexcept>
-#include <string> 
+#include <string>
+#include <mutex>
 
 
 namespace GoCL {
@@ -26,28 +27,22 @@ VkImage TextureManager::LoadTexture(
 
     VkImage result = VK_NULL_HANDLE;
     const uint32_t vramMB = ctx.VRAMRemainingMB();
+    const bool     isHDR  = (usage == TextureUsage::HDR);
 
-    if (ctx.caps.astcLdrHW) {
-        // HW path: Mali, Adreno, Intel Gen9–Gen12
+    if (isHDR && !ctx.caps.astcHdrHW) {
+        auto etc2 = TranscodeToETC2(raw, w, h);
+        result = ctx.UploadTexture(VK_FORMAT_ETC2_R8G8B8A8_UNORM_BLOCK,
+                                   w, h, etc2.data(), etc2.size());
+    } else if (ctx.caps.astcLdrHW ||
+               (ctx.caps.vendorID == 0x10DE && !ctx.caps.nvidiaNoASTCDriver)) {
         ASTCParams blk  = ASTCBlockSelector::Select(usage, w, h, vramMB);
-        auto compressed = CompressToASTCEnc(raw, w, h, blk);
-        VkFormat fmt    = ASTCVkFormat(blk.blockW, blk.blockH);
+        auto compressed = CompressToASTCEnc(raw, w, h, blk, isHDR);
+        VkFormat fmt    = ASTCVkFormat(blk.blockW, blk.blockH, isHDR);
         result = ctx.UploadTexture(fmt, w, h, compressed.data(), compressed.size());
-
-    } else if (ctx.caps.vendorID == 0x10DE && !ctx.caps.nvidiaNoASTCDriver) {
-        // NVIDIA pre-545.84: driver SW-decodes ASTC — skip Basis transcode,
-        // upload ASTC directly and let the driver handle it
-        ASTCParams blk  = ASTCBlockSelector::Select(usage, w, h, vramMB);
-        auto compressed = CompressToASTCEnc(raw, w, h, blk);
-        VkFormat fmt    = ASTCVkFormat(blk.blockW, blk.blockH);
-        result = ctx.UploadTexture(fmt, w, h, compressed.data(), compressed.size());
-
     } else {
-        // ETC2 fallback: NVIDIA ≥545.84, AMD, Intel Arc, software renderers
         auto etc2    = TranscodeToETC2(raw, w, h);
-        VkFormat fmt = (ch == 4)
-            ? VK_FORMAT_ETC2_R8G8B8A8_UNORM_BLOCK
-            : VK_FORMAT_ETC2_R8G8B8_UNORM_BLOCK;
+        VkFormat fmt = (ch == 4) ? VK_FORMAT_ETC2_R8G8B8A8_UNORM_BLOCK
+                                 : VK_FORMAT_ETC2_R8G8B8_UNORM_BLOCK;
         result = ctx.UploadTexture(fmt, w, h, etc2.data(), etc2.size());
     }
 
@@ -55,24 +50,23 @@ VkImage TextureManager::LoadTexture(
     return result;
 }
 
-VkFormat TextureManager::ASTCVkFormat(uint8_t bw, uint8_t bh)
+VkFormat TextureManager::ASTCVkFormat(uint8_t bw, uint8_t bh, bool hdr)
 {
-    // Encode block dims as a single key: (bw << 8) | bh
     switch ((uint32_t(bw) << 8) | bh) {
-        case (4  << 8) | 4:  return VK_FORMAT_ASTC_4x4_UNORM_BLOCK;
-        case (5  << 8) | 4:  return VK_FORMAT_ASTC_5x4_UNORM_BLOCK;
-        case (5  << 8) | 5:  return VK_FORMAT_ASTC_5x5_UNORM_BLOCK;
-        case (6  << 8) | 5:  return VK_FORMAT_ASTC_6x5_UNORM_BLOCK;
-        case (6  << 8) | 6:  return VK_FORMAT_ASTC_6x6_UNORM_BLOCK;
-        case (8  << 8) | 5:  return VK_FORMAT_ASTC_8x5_UNORM_BLOCK;
-        case (8  << 8) | 6:  return VK_FORMAT_ASTC_8x6_UNORM_BLOCK;
-        case (8  << 8) | 8:  return VK_FORMAT_ASTC_8x8_UNORM_BLOCK;
-        case (10 << 8) | 5:  return VK_FORMAT_ASTC_10x5_UNORM_BLOCK;
-        case (10 << 8) | 6:  return VK_FORMAT_ASTC_10x6_UNORM_BLOCK;
-        case (10 << 8) | 8:  return VK_FORMAT_ASTC_10x8_UNORM_BLOCK;
-        case (10 << 8) | 10: return VK_FORMAT_ASTC_10x10_UNORM_BLOCK;
-        case (12 << 8) | 10: return VK_FORMAT_ASTC_12x10_UNORM_BLOCK;
-        case (12 << 8) | 12: return VK_FORMAT_ASTC_12x12_UNORM_BLOCK;
+        case (4  << 8) | 4:  return hdr ? VK_FORMAT_ASTC_4x4_SFLOAT_BLOCK  : VK_FORMAT_ASTC_4x4_UNORM_BLOCK;
+        case (5  << 8) | 4:  return hdr ? VK_FORMAT_ASTC_5x4_SFLOAT_BLOCK  : VK_FORMAT_ASTC_5x4_UNORM_BLOCK;
+        case (5  << 8) | 5:  return hdr ? VK_FORMAT_ASTC_5x5_SFLOAT_BLOCK  : VK_FORMAT_ASTC_5x5_UNORM_BLOCK;
+        case (6  << 8) | 5:  return hdr ? VK_FORMAT_ASTC_6x5_SFLOAT_BLOCK  : VK_FORMAT_ASTC_6x5_UNORM_BLOCK;
+        case (6  << 8) | 6:  return hdr ? VK_FORMAT_ASTC_6x6_SFLOAT_BLOCK  : VK_FORMAT_ASTC_6x6_UNORM_BLOCK;
+        case (8  << 8) | 5:  return hdr ? VK_FORMAT_ASTC_8x5_SFLOAT_BLOCK  : VK_FORMAT_ASTC_8x5_UNORM_BLOCK;
+        case (8  << 8) | 6:  return hdr ? VK_FORMAT_ASTC_8x6_SFLOAT_BLOCK  : VK_FORMAT_ASTC_8x6_UNORM_BLOCK;
+        case (8  << 8) | 8:  return hdr ? VK_FORMAT_ASTC_8x8_SFLOAT_BLOCK  : VK_FORMAT_ASTC_8x8_UNORM_BLOCK;
+        case (10 << 8) | 5:  return hdr ? VK_FORMAT_ASTC_10x5_SFLOAT_BLOCK : VK_FORMAT_ASTC_10x5_UNORM_BLOCK;
+        case (10 << 8) | 6:  return hdr ? VK_FORMAT_ASTC_10x6_SFLOAT_BLOCK : VK_FORMAT_ASTC_10x6_UNORM_BLOCK;
+        case (10 << 8) | 8:  return hdr ? VK_FORMAT_ASTC_10x8_SFLOAT_BLOCK : VK_FORMAT_ASTC_10x8_UNORM_BLOCK;
+        case (10 << 8) | 10: return hdr ? VK_FORMAT_ASTC_10x10_SFLOAT_BLOCK: VK_FORMAT_ASTC_10x10_UNORM_BLOCK;
+        case (12 << 8) | 10: return hdr ? VK_FORMAT_ASTC_12x10_SFLOAT_BLOCK: VK_FORMAT_ASTC_12x10_UNORM_BLOCK;
+        case (12 << 8) | 12: return hdr ? VK_FORMAT_ASTC_12x12_SFLOAT_BLOCK: VK_FORMAT_ASTC_12x12_UNORM_BLOCK;
         default:
             throw std::runtime_error(
                 "TextureManager: unsupported ASTC block size " +
@@ -80,20 +74,18 @@ VkFormat TextureManager::ASTCVkFormat(uint8_t bw, uint8_t bh)
     }
 }
 
-// ---------------------------------------------------------------------------
-// CompressToASTCEnc
-// ---------------------------------------------------------------------------
 std::vector<uint8_t> TextureManager::CompressToASTCEnc(
-    const uint8_t* raw, uint32_t w, uint32_t h, const ASTCParams& blk)
+    const uint8_t* raw, uint32_t w, uint32_t h,
+    const ASTCParams& blk, bool hdr)
 {
     astcenc_config cfg{};
     astcenc_config_init(
-        ASTCENC_PRF_LDR,
+        hdr ? ASTCENC_PRF_HDR : ASTCENC_PRF_LDR,
         blk.blockW, blk.blockH, 1,
         ASTCENC_PRE_FAST, 0, &cfg);
 
     astcenc_context* ctx = nullptr;
-    if (astcenc_context_alloc(&cfg, 1, &ctx, 0) != ASTCENC_SUCCESS)
+    if (astcenc_context_alloc(&cfg, 1, &ctx) != ASTCENC_SUCCESS)
         throw std::runtime_error("TextureManager: astcenc_context_alloc failed");
 
     astcenc_image img{};
@@ -120,15 +112,11 @@ std::vector<uint8_t> TextureManager::CompressToASTCEnc(
     return out;
 }
 
-// ---------------------------------------------------------------------------
-// TranscodeToETC2
-// ---------------------------------------------------------------------------
 std::vector<uint8_t> TextureManager::TranscodeToETC2(
     const uint8_t* raw, uint32_t w, uint32_t h)
 {
-    using namespace basist;
-
-    basisu_transcoder_init();
+    static std::once_flag sInit;
+    std::call_once(sInit, []{ basist::basisu_transcoder_init(); });
 
     basisu::image srcImg(w, h);
     for (uint32_t y = 0; y < h; ++y)
@@ -153,7 +141,7 @@ std::vector<uint8_t> TextureManager::TranscodeToETC2(
 
     const auto& basisData = comp.get_output_basis_file();
 
-    basisu_transcoder transcoder;
+    basist::basisu_transcoder transcoder;
     if (!transcoder.start_transcoding(basisData.data(), (uint32_t)basisData.size()))
         throw std::runtime_error("TextureManager: transcoder start failed");
 
@@ -168,7 +156,7 @@ std::vector<uint8_t> TextureManager::TranscodeToETC2(
     if (!transcoder.transcode_image_level(
             basisData.data(), (uint32_t)basisData.size(),
             0, 0, out.data(), totalBlocks,
-            transcoder_texture_format::cTFETC2_RGBA))
+            basist::transcoder_texture_format::cTFETC2_RGBA))
         throw std::runtime_error("TextureManager: ETC2 transcode failed");
 
     return out;

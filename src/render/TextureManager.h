@@ -18,11 +18,12 @@ public:
         const std::string& path,
         TextureUsage       usage);
 
-    static VkFormat ASTCVkFormat(uint8_t bw, uint8_t bh);
+    static VkFormat ASTCVkFormat(uint8_t bw, uint8_t bh, bool hdr = false);
 
 private:
     static std::vector<uint8_t> CompressToASTCEnc(
-        const uint8_t* raw, uint32_t w, uint32_t h, const ASTCParams& blk);
+        const uint8_t* raw, uint32_t w, uint32_t h,
+        const ASTCParams& blk, bool hdr = false);
 
     static std::vector<uint8_t> TranscodeToETC2(
         const uint8_t* raw, uint32_t w, uint32_t h);
