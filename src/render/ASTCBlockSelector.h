@@ -34,39 +34,33 @@ public:
         uint32_t     vramBudgetMB,
         bool         isAnimatedUV = false
     ) noexcept {
-        // UI/HDR: quality-sensitive, block artifacts unacceptable — always 4×4.
-        // HDR note: caller must still verify VK_EXT_texture_compression_astc_hdr;
-        // this selector only governs block size, not format class.
-        if (usage == TextureUsage::UI  ||
-            usage == TextureUsage::HDR ||
+        // UI + LUT: always 4×4, no exceptions
+        if (usage == TextureUsage::UI ||
             usage == TextureUsage::LUT) [[unlikely]]
             return {};
 
-        // Animated UV: cache coherence dominates compression ratio — always 4×4.
         if (isAnimatedUV) [[unlikely]]
             return {};
 
         const uint32_t pixels = texWidth * texHeight;
 
-        // Normal maps: preserve high-frequency detail; block size by pixel count,
-        // not width alone (handles non-square atlases correctly).
         if (usage == TextureUsage::Normal) [[unlikely]] {
-            const uint8_t blk = (pixels > kThreshLarge) ? 5u : 4u;
+            // was kThreshLarge — too conservative, misses medium-large normals
+            const uint8_t blk = (pixels > kThreshMedium) ? 5u : 4u;
             return { blk, blk };
         }
 
-        // Roughness: single-channel perceptual data tolerates more compression.
-        // Skips one tier vs Diffuse at medium sizes; stays within the 6×6 cap
-        // validated safe by the 2k/8×8 sampler-cache research.
         if (usage == TextureUsage::Roughness) [[unlikely]] {
-            const uint8_t blk = (pixels > kThreshMedium || vramBudgetMB < kVRAMTight) ? 6u : 5u;
+            // was kThreshMedium — too aggressive, 1920×1080 hit 6×6 unexpectedly
+            const uint8_t blk = (pixels > kThreshLarge || vramBudgetMB < kVRAMTight) ? 6u : 5u;
             return { blk, blk };
         }
 
-        // Hot path: Diffuse
+        // HDR removed from early-out: VRAM pressure must still apply
+        // Hot path: Diffuse + HDR
         const uint8_t blk = (pixels > kThreshLarge || vramBudgetMB < kVRAMTight) ? 6u
-                          : (pixels > kThreshMedium)                              ? 5u
-                          :                                                         4u;
+                        : (pixels > kThreshMedium)                              ? 5u
+                        :                                                         4u;
         return { blk, blk };
     }
 };
