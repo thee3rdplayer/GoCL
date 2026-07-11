@@ -1,0 +1,139 @@
+# ---------------------------------------------------------------------------
+# Windows build workflow (MSYS2 / MinGW‑w64)
+#
+# Builds the GoCL static library, the proxy DLL, and the test suite on a
+# Windows GitHub Actions runner.
+#
+# GPU‑dependent tests are allowed to fail on the headless runner; the
+# proxy DLL existence is verified.
+# ---------------------------------------------------------------------------
+
+name: GoCL Windows Build
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+
+    defaults:
+      run:
+        shell: msys2 {0}
+
+    strategy:
+      matrix:
+        msystem: [mingw64]
+
+    steps:
+      # 1. Checkout the repository
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # 2. Set up MSYS2 with the MinGW‑w64 toolchain and required packages
+      - name: Setup MSYS2
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: ${{ matrix.msystem }}
+          update: true
+          install: >-
+            base-devel
+            mingw-w64-x86_64-cmake
+            mingw-w64-x86_64-ninja
+            mingw-w64-x86_64-gcc
+            mingw-w64-x86_64-make
+            mingw-w64-x86_64-spirv-tools
+            mingw-w64-x86_64-glslang
+            mingw-w64-x86_64-vulkan-headers
+            mingw-w64-x86_64-vulkan-loader
+            mingw-w64-x86_64-vulkan-validation-layers
+
+      # 3. Install LunarG Vulkan SDK
+      - name: Install Vulkan SDK
+        shell: pwsh
+        run: |
+          Invoke-WebRequest `
+            -Uri "https://sdk.lunarg.com/sdk/download/latest/windows/vulkan_sdk.exe" `
+            -OutFile vulkan_sdk.exe
+
+          Start-Process `
+            -FilePath .\vulkan_sdk.exe `
+            -ArgumentList "--accept-licenses --default-answer --confirm-command install" `
+            -Wait
+
+          $sdkVersion = Get-ChildItem C:\VulkanSDK | Sort-Object Name -Descending | Select-Object -First 1 -ExpandProperty Name
+
+          echo "VULKAN_SDK=C:\VulkanSDK\$sdkVersion" >> $env:GITHUB_ENV
+          echo "C:\VulkanSDK\$sdkVersion\Bin" >> $env:GITHUB_PATH
+
+      # 4. Convert Vulkan SDK path for MSYS2
+      - name: Convert Vulkan SDK path for MSYS2
+        shell: msys2 {0}
+        run: |
+          # Convert Windows path (C:\...) to Unix style (/c/...) for MSYS2 bash compatibility
+          VULKAN_SDK_UNIX=$(cygpath -u "$VULKAN_SDK")
+          echo "VULKAN_SDK_UNIX=$VULKAN_SDK_UNIX" >> $GITHUB_ENV 
+
+      # 5. Configure with CMake
+      - name: Configure
+        run: |
+          cmake -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DGOCL_ENABLE_TESTS=ON \
+            -DGOCL_ENABLE_LAYER=ON \
+            -DCMAKE_C_COMPILER=gcc \
+            -DCMAKE_CXX_COMPILER=g++ \
+            -DCMAKE_PREFIX_PATH="${{ env.VULKAN_SDK_UNIX }}/x86_64" 
+
+      # 6. Build the project
+      - name: Build
+        run: cmake --build build --config Release --parallel 
+
+      # 7. Run tests (SwiftShader failures allowed)
+      - name: Run tests
+        run: ctest --test-dir build --output-on-failure -V
+        continue-on-error: true    
+
+      # 8. Verify and locate proxy DLL
+      - name: Locate proxy DLL
+        id: locate_dll
+        run: |
+          DLL_PATH=$(find build -name "vulkan_proxy.dll" -print -quit)
+          if [ -z "$DLL_PATH" ]; then
+            echo "ERROR: Proxy DLL not found in build tree"
+            exit 1
+          fi
+          echo "dll_path=$DLL_PATH" >> $GITHUB_OUTPUT
+          echo "Proxy DLL found: $DLL_PATH"
+
+      # 9. Collect artifacts
+      - name: Collect artifacts
+        shell: msys2 {0}
+        run: |
+          mkdir -p artifacts
+
+          TRANSCODER_DLL=$(find build -name "gocl_transcoder.dll" -print -quit)
+          if [ -n "$TRANSCODER_DLL" ]; then
+            cp "$TRANSCODER_DLL" artifacts/
+          else
+            echo "WARNING: gocl_transcoder.dll not found, skipping"
+          fi
+
+          cp "${{ steps.locate_dll.outputs.dll_path }}" artifacts/vulkan_proxy.dll
+          find build -name "VkLayer_GoCL_Proxy.json" -exec cp {} artifacts/ \; 
+
+          # Static libraries
+          find build -name "GoCL_core.a" -exec cp {} artifacts/ \;
+          find build -name "GoCL_texture.a" -exec cp {} artifacts/ \;
+
+          # Remove test executables from the artifact:
+          # find build -name "*Test.exe" -exec cp {} artifacts/ \;
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: gocl_windows
+          path: artifacts/*

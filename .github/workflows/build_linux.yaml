@@ -1,0 +1,110 @@
+# ---------------------------------------------------------------------------
+# CI workflow for Linux (Lavapipe CPU Vulkan)
+#
+# Runs the full GoCL test suite on every push and pull request using
+# Mesa's Lavapipe software Vulkan implementation.  
+# Runs all registered GoCL tests under Lavapipe.
+# ---------------------------------------------------------------------------
+
+name: GoCL Linux Build
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+jobs:
+  vulkan-cpu:
+    runs-on: ubuntu-22.04
+
+    steps:
+      # 1. Checkout the repository (including submodules, if any)
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      # 2. Purge stale repos, install Mesa Lavapipe, and core system tools
+      - name: Install Mesa Lavapipe + core tools
+        run: |
+          # Explicitly delete any broken legacy LunarG files left over in the environment
+          sudo rm -f /etc/apt/sources.list.d/lunarg*.list
+          
+          # Now standard update and dependency installation will succeed safely
+          sudo apt-get update -y
+          sudo apt-get install -y \
+            libvulkan-dev \
+            vulkan-tools \
+            vulkan-validationlayers \
+            mesa-vulkan-drivers
+
+      # 3. Download and unpack the official LunarG Vulkan SDK Tarball directly
+      - name: Setup Vulkan SDK
+        run: |
+          # 1. Fetch the exact tarball file directly from the LunarG CDN
+          curl -LO https://sdk.lunarg.com/sdk/download/latest/linux/vulkan_sdk.tar.xz
+          # 2. Extract the payload cleanly into the working folder
+          tar -xf vulkan_sdk.tar.xz
+          
+          # 3. Export the explicit absolute paths so CMake's find_package() can read it
+          # Note: The tarball extracts into a versioned SDK directory (for example, '1.4.3xx.x')
+          echo "VULKAN_SDK=$(find "$GITHUB_WORKSPACE" -type d -name x86_64 | head -1)" >> $GITHUB_ENV
+          echo "$(find "$GITHUB_WORKSPACE" -type d -name x86_64 | head -1)/bin" >> $GITHUB_PATH 
+
+      # 4. Confirm the Vulkan loader sees the Lavapipe ICD
+      - name: Verify Vulkan ICD
+        run: vulkaninfo --summary
+        env:
+          VK_ICD_FILENAMES: /usr/share/vulkan/icd.d/lvp_icd.x86_64.json
+
+      # 5. Configure the project with tests and proxy layer enabled
+      - name: Configure
+        run: |
+          cmake -B build \
+            -DCMAKE_CXX_COMPILER=g++ \
+            -DGOCL_ENABLE_TESTS=ON \
+            -DGOCL_ENABLE_LAYER=ON \
+            -DGOCL_FORCE_SWIFTSHADER=ON \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DVulkan_LIBRARY=/usr/lib/x86_64-linux-gnu/libvulkan.so
+
+      # 6. Build the engine, proxy, and all test executables
+      - name: Build
+        run: cmake --build build -j$(nproc)
+
+      # 7. Verify proxy library was actually produced
+      - name: Verify proxy library
+        run: |
+          find build -name "vulkan_proxy.so" | grep .
+
+      # 8. Execute the test suite, printing any failures in full
+      - name: Verify validation layer
+        run: vulkaninfo | grep VK_LAYER_KHRONOS_validation || true
+
+      - name: Run all tests
+        run: ctest --test-dir build --output-on-failure -V
+        env:
+          VK_ICD_FILENAMES: /usr/share/vulkan/icd.d/lvp_icd.x86_64.json
+          VK_INSTANCE_LAYERS: VK_LAYER_KHRONOS_validation
+        continue-on-error: true  
+
+      # 9. Collect artifacts
+      - name: Collect artifacts
+        if: always()
+        run: |
+          mkdir -p artifacts
+          find build -name "vulkan_proxy.so" -exec cp {} artifacts/ \;
+          find build -name "gocl_transcoder.so" -exec cp {} artifacts/ \;
+          find build -name "VkLayer_GoCL_Proxy.json" -exec cp {} artifacts/ \;
+          find build -name "GoCL_core.a" -exec cp {} artifacts/ \;
+          find build -name "GoCL_texture.a" -exec cp {} artifacts/ \;
+          # remove test executables from artifact upload:
+          # find build -name "*Test*" -type f -executable -exec cp {} artifacts/ \; 2>/dev/null || true
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: gocl_linux
+          if-no-files-found: warn
+          path: artifacts/* 

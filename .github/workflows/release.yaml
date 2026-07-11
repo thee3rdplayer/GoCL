@@ -1,0 +1,153 @@
+name: GoCL Release
+
+on:
+  push:
+    tags:
+      - "v*"   # e.g., v0.2.0
+
+permissions:
+  contents: write   # Required to create releases and upload assets      
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-22.04
+            artifact_name: GoCL-linux
+          - os: windows-latest
+            artifact_name: GoCL-windows
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # ---------- Linux ----------
+      - name: Install Linux dependencies & Vulkan SDK
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y libvulkan-dev mesa-vulkan-drivers build-essential cmake
+
+          # LunarG Vulkan SDK tarball (same as CI)
+          curl -LO https://sdk.lunarg.com/sdk/download/latest/linux/vulkan_sdk.tar.xz
+          tar -xf vulkan_sdk.tar.xz
+          echo "VULKAN_SDK=$(find "$GITHUB_WORKSPACE" -type d -name x86_64 | head -1)" >> $GITHUB_ENV
+          echo "$(find "$GITHUB_WORKSPACE" -type d -name x86_64 | head -1)/bin" >> $GITHUB_PATH
+
+      - name: Configure (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          cmake -B build \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DGOCL_ENABLE_LAYER=ON \
+            -DVulkan_LIBRARY=/usr/lib/x86_64-linux-gnu/libvulkan.so
+
+      # ---------- Windows ----------
+      - name: Setup MSYS2
+        if: runner.os == 'Windows'
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: mingw64
+          install: >-
+            base-devel
+            mingw-w64-x86_64-cmake
+            mingw-w64-x86_64-gcc
+            mingw-w64-x86_64-ninja
+            mingw-w64-x86_64-vulkan-headers
+            mingw-w64-x86_64-vulkan-loader
+            zip
+
+      - name: Install Vulkan SDK (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          Invoke-WebRequest `
+            -Uri "https://sdk.lunarg.com/sdk/download/latest/windows/vulkan_sdk.exe" `
+            -OutFile vulkan_sdk.exe
+          Start-Process `
+            -FilePath .\vulkan_sdk.exe `
+            -ArgumentList "--accept-licenses --default-answer --confirm-command install" `
+            -Wait
+          $sdkVersion = Get-ChildItem C:\VulkanSDK | Sort-Object Name -Descending | Select-Object -First 1 -ExpandProperty Name
+          echo "VULKAN_SDK=C:\VulkanSDK\$sdkVersion" >> $env:GITHUB_ENV
+          echo "C:\VulkanSDK\$sdkVersion\Bin" >> $env:GITHUB_PATH
+
+      - name: Convert Vulkan SDK path for MSYS2
+        if: runner.os == 'Windows'
+        shell: msys2 {0}
+        run: |
+          VULKAN_SDK_UNIX=$(cygpath -u "$VULKAN_SDK")
+          echo "VULKAN_SDK_UNIX=$VULKAN_SDK_UNIX" >> $GITHUB_ENV
+
+      - name: Configure (Windows)
+        if: runner.os == 'Windows'
+        shell: msys2 {0}
+        run: |
+          cmake -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DGOCL_ENABLE_LAYER=ON \
+            -DCMAKE_C_COMPILER=gcc \
+            -DCMAKE_CXX_COMPILER=g++ \
+            -DCMAKE_PREFIX_PATH="${{ env.VULKAN_SDK_UNIX }}/x86_64"
+
+      # ---------- Build ----------
+      - name: Build (Linux)
+        if: runner.os == 'Linux'
+        run: cmake --build build --parallel
+
+      - name: Build (Windows)
+        if: runner.os == 'Windows'
+        shell: msys2 {0}
+        run: cmake --build build --parallel
+
+      # ---------- Install to staging ----------
+      - name: Install to staging (Linux)
+        if: runner.os == 'Linux'
+        run: cmake --install build --prefix staging
+
+      - name: Install to staging (Windows)
+        if: runner.os == 'Windows'
+        shell: msys2 {0}
+        run: cmake --install build --prefix staging
+
+      # ---------- Package ----------
+      - name: Package (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          mkdir -p release
+          cp -r staging/* release/
+          cp .github/FUNDING.yml release/   2>/dev/null || true
+          cp -r donate release/             2>/dev/null || true
+          cp -r LICENSES release/           2>/dev/null || true
+          cp CHANGELOG.md release/          2>/dev/null || true
+          cp GoCL.conf release/             2>/dev/null || true
+          cp README.md release/             2>/dev/null || true
+          cp SUPPORT.md release/            2>/dev/null || true
+          cd release
+          zip -r ../${{ matrix.artifact_name }}-${{ github.ref_name }}.zip .
+
+      - name: Package (Windows)
+        if: runner.os == 'Windows'
+        shell: msys2 {0}
+        run: |
+          mkdir -p release
+          cp -r staging/* release/
+          cp .github/FUNDING.yml release/   2>/dev/null || true
+          cp -r donate release/             2>/dev/null || true
+          cp -r LICENSES release/           2>/dev/null || true
+          cp CHANGELOG.md release/          2>/dev/null || true
+          cp GoCL.conf release/             2>/dev/null || true
+          cp README.md release/             2>/dev/null || true
+          cp SUPPORT.md release/            2>/dev/null || true
+          cd release
+          zip -r ../${{ matrix.artifact_name }}-${{ github.ref_name }}.zip .
+
+      # ---------- Upload release asset ----------
+      - name: Upload Release Asset
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ matrix.artifact_name }}-${{ github.ref_name }}.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

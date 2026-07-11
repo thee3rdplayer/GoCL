@@ -1,0 +1,18 @@
+{
+  "file_format_version": "1.2.0",
+  "layer": {
+    "name": "VK_LAYER_GoCL_Proxy",
+    "library_arch": "64", 
+    "type": "GLOBAL",
+    "library_path": "@GOCL_PROXY_LIBRARY@",
+    "api_version": "1.4.350",
+    "implementation_version": "0.1.0",
+    "introduction": "GoCL cross-generational optimization proxy",
+    "description": "Shader translation, capability emulation and Vulkan resource interception layer",
+    "url": "https://github.com/thee3rdplayer/GoCL", 
+    "platforms": ["LINUX", "WINDOWS"], 
+    "status": "Beta",
+    "enable_environment": { "ENABLE_GOCL_LAYER": "1" },
+    "disable_environment": { "DISABLE_GOCL_LAYER": "1" }
+  }
+} 
