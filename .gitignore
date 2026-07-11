@@ -1,0 +1,28 @@
+# Linux / macOS / Windows build
+build/ 
+  
+# IDE / Editor
+.vscode/
+.idea/
+history.txt
+
+# Secrets
+*.pem
+*.key
+
+# Root archives
+/*.7z 
+
+# Third-party game engines / test apps   
+OptiScaler/ 
+dxvk/
+vkd3d/
+VkExamples/ 
+*.sh
+*.ini
+*.ppm
+
+# Generated graphics / profiling data 
+callgrind.*.out
+annotated_*.txt
+diff_callgrind.txt 
